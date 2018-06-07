@@ -2693,7 +2693,7 @@ Lng32 Execute::storeParams(char* argument_, short &num_params,
              // name lookup
              CharInfo::CharSet cs = CharInfo::getCharSetEnum(upperCaseName);
              if ( TOUPPER(*args) == 'N') {
-                cs = CharInfo::UCS2;
+                cs = CharInfo::UNICODE;
              }
              delete [] upperCaseName;
 
