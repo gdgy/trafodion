@@ -3409,10 +3409,11 @@ char HandleHexValue(char upperBits, char lowerBits)
     return getHexDigitValue(upperBits)*16 + getHexDigitValue(lowerBits);
 }
 
-void handleCharsetPerfix(char* source,  ComDiagsArea *diagsArea, CollHeap*heap, Descriptor * inputDesc)
+NABoolean handleCharsetPerfix(char* source,  ComDiagsArea *diagsArea, CollHeap*heap, Descriptor * inputDesc)
 {
     char perfix[MAX_CHAR_SET_STRING_LENGTH];
     Lng32 endIndex = MAX_CHAR_SET_STRING_LENGTH;
+
     if (source)
     {
         Lng32 perfix_beg = 0;
@@ -3436,7 +3437,7 @@ void handleCharsetPerfix(char* source,  ComDiagsArea *diagsArea, CollHeap*heap, 
                 }
                 // not include charset name
                 if (perfix_end == endIndex)
-                    return;
+                    return TRUE;
                 perfix_end += 2;
             }
 
@@ -3447,8 +3448,15 @@ void handleCharsetPerfix(char* source,  ComDiagsArea *diagsArea, CollHeap*heap, 
                 perfix_beg = 0;
                 cs = CharInfo::UNICODE;
             }
+
+            //TODO invalid charset check
+            if (!CharInfo::isCharSetFullySupported(cs))
+            {
+                //*diagsArea << DgSqlCode(-3010) << DgString0(perfix);
+                return FALSE;
+            }
             if (cs == CharInfo::UnknownCharSet)
-                return;
+                return TRUE;
             NABoolean isHex = false;
 
             if(perfix_end > 4 && source[perfix_end-2] == 'X' && source[perfix_end-4] == ' ')
@@ -3456,46 +3464,53 @@ void handleCharsetPerfix(char* source,  ComDiagsArea *diagsArea, CollHeap*heap, 
                isHex = true;
             }
 
-                Lng32 valueBeg = perfix_end + 2;
-                Lng32 valueEnd = valueBeg;
-                while(*(source+valueEnd))
+            Lng32 valueBeg = perfix_end + 2;
+            Lng32 valueEnd = valueBeg;
+            while(*(source+valueEnd))
+            {
+                if (source[valueEnd] == '\'')
                 {
-                    if (source[valueEnd] == '\'')
+                    NAString* pTempStr = NULL;
+                    pTempStr = unicodeToChar((wchar_t*)&source[valueBeg], (valueEnd-valueBeg)/2,
+                                             static_cast<Lng32>(cs), heap);
+                    if(pTempStr == NULL)
                     {
+//                        if (diagsArea)
+//                            *diagsArea << DgSqlCode(-8413);
+                        return FALSE;
+                    }
 
-                        NAString* pTempStr = NULL;
-                        pTempStr = unicodeToChar((wchar_t*)&source[valueBeg], (valueEnd-valueBeg)/2,
-                                                 static_cast<Lng32>(cs), heap);
 
-                        memcpy(source, &source[valueBeg], valueEnd-valueBeg);
-                        if(isHex)
+                    memcpy(source, &source[valueBeg], valueEnd-valueBeg);
+                    if(isHex)
+                    {
+                        for (Lng32 i=0; i < valueEnd-valueBeg-2; i+=4)
                         {
-                            for (Lng32 i=0; i < valueEnd-valueBeg-2; i+=4)
+                            source[i/2] = HandleHexValue(source[i], source[i+2]);
+                            source[i/2+1] = 0;
+                            if(i != 0)
                             {
-                                source[i/2] = HandleHexValue(source[i], source[i+2]);
-                                source[i/2+1] = 0;
-                                if(i != 0)
-                                {
-                                    source[i] = ' ';
-                                    source[i+1] = 0;
-                                }
-                                source[i+2] = ' ';
-                                source[i+3] = 0;
-                            }
-                        }
-                        for (Lng32 i =valueEnd - valueBeg; i < valueEnd+2;  ++i)
-                        {
-                            if (i%2 == 0)
                                 source[i] = ' ';
-                            else {
-                                source[i] = 0;
+                                source[i+1] = 0;
                             }
+                            source[i+2] = ' ';
+                            source[i+3] = 0;
                         }
-                }
-                    valueEnd += 2;
+                    }
+                    for (Lng32 i =valueEnd - valueBeg; i < valueEnd+2;  ++i)
+                    {
+                        if (i%2 == 0)
+                            source[i] = ' ';
+                        else {
+                            source[i] = 0;
+                        }
+                    }
             }
+                valueEnd += 2;
         }
+       }
     }
+    return TRUE;
 }
 
 ex_expr::exp_return_type
@@ -3922,7 +3937,10 @@ InputOutputExpr::inputValues(atp_struct *atp,
 	  }
           if(isOdbc)
           {
-              handleCharsetPerfix(source, diagsArea, heap, inputDesc);
+              if(diagsArea != atp->getDiagsArea())
+                  atp->setDiagsArea(diagsArea);
+              if(!handleCharsetPerfix(source, diagsArea, heap, inputDesc))
+                  return ex_expr::EXPR_ERROR;
           }
           if (DFS2REC::isSQLVarChar(sourceType)) {
             Lng32 vcIndLen = inputDesc->getVarIndicatorLength(entry);
