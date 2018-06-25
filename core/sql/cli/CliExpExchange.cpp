@@ -3414,102 +3414,186 @@ NABoolean handleCharsetPerfix(char* source,  ComDiagsArea *diagsArea, CollHeap*h
     char perfix[MAX_CHAR_SET_STRING_LENGTH];
     Lng32 endIndex = MAX_CHAR_SET_STRING_LENGTH;
 
-    if (source)
+    if(inputDesc)
     {
-        Lng32 perfix_beg = 0;
-        Lng32 perfix_end = 0;
-        if(source[0] == '_' || source[0] =='N' || source[0] == 'n')
+        for (Lng32 entry = 1; entry <= inputDesc->getUsedEntryCount(); ++entry)
         {
-            perfix_beg += 2;
-            perfix_end = perfix_beg;
-
-            // get charset perfix
-            while (perfix_end <= endIndex)
+            Lng32 perfix_beg = -1;
+            Lng32 perfix_end = 0;
+            char* source = inputDesc->getVarData(entry);
+            Lng32 valueLength = inputDesc->getVarDataLength(entry);
+            if (source)
             {
-                if(source[perfix_end] == '\'')
+                // get charset perfix beg loc
+                for (Lng32 i = 0; i < valueLength && i < MAX_CHAR_SET_STRING_LENGTH; ++i)
                 {
-                    //charset perfix
-                    Lng32 i;
-                    for(i = 0; i < (perfix_end-perfix_beg)/2; ++i)
-                            perfix[i] = TOUPPER(*(source+perfix_beg+i*2));
-                    perfix[i] = 0;
-                    break;
+                    if(source[i] == '_' || TOUPPER(source[i]) =='N')
+                    {
+                        perfix_beg = i;
+                        break;
+                    }
+
+                    if (source[i] == '\'')
+                        return TRUE;
                 }
-                // not include charset name
-                if (perfix_end == endIndex)
+
+                if (perfix_beg < 0)
                     return TRUE;
-                perfix_end += 2;
-            }
 
-            // charset name lookup
-            CharInfo::CharSet cs = CharInfo::getCharSetEnum(perfix);
-            if(source[0] != '_')
-            {
-                perfix_beg = 0;
-                cs = CharInfo::UNICODE;
-            }
+                // get charset perfix end loc
+                Lng32 perfix_ind = 0;
 
-            //TODO invalid charset check
-            if (!CharInfo::isCharSetFullySupported(cs))
-            {
-                //*diagsArea << DgSqlCode(-3010) << DgString0(perfix);
-                return FALSE;
-            }
-            if (cs == CharInfo::UnknownCharSet)
-                return TRUE;
-            NABoolean isHex = false;
-
-            if(perfix_end > 4 && source[perfix_end-2] == 'X' && source[perfix_end-4] == ' ')
-            {
-               isHex = true;
-            }
-
-            Lng32 valueBeg = perfix_end + 2;
-            Lng32 valueEnd = valueBeg;
-            while(*(source+valueEnd))
-            {
-                if (source[valueEnd] == '\'')
+                if (source[perfix_beg] == 'N')
                 {
-                    NAString* pTempStr = NULL;
-                    pTempStr = unicodeToChar((wchar_t*)&source[valueBeg], (valueEnd-valueBeg)/2,
-                                             static_cast<Lng32>(cs), heap);
-                    if(pTempStr == NULL)
+                    perfix[perfix_ind] = 'N';
+                    perfix_ind = 1;
+                }
+
+                for (Lng32 i = perfix_beg+1; i < valueLength && i < MAX_CHAR_SET_STRING_LENGTH; ++i)
+                {
+                    if(source[i] != '\'' && source[i] != 0)
                     {
-//                        if (diagsArea)
-//                            *diagsArea << DgSqlCode(-8413);
-                        return FALSE;
+                       perfix[perfix_ind] = TOUPPER(source[i]);
+                       ++perfix_ind;
                     }
 
+                    if(source[i] == '\'')
+                    {
+                        perfix[perfix_ind] = 0;
+                        perfix_end = i;
+                        break;
+                    }
+                }
 
-                    memcpy(source, &source[valueBeg], valueEnd-valueBeg);
-                    if(isHex)
+                // cs
+                CharInfo::CharSet cs = CharInfo::getCharSetEnum(perfix);
+
+                if(str_len(perfix) == 1 AND perfix[0] == 'N')
+                   cs = CharInfo::UNICODE;
+
+                //cs类型验证
+                if(cs == CharInfo::UnknownCharSet)
+                    return TRUE;
+
+                // remove cs
+                Lng32 valEnd = 0;
+                for (Lng32 i = perfix_end+1; i < valueLength; ++i)
+                {
+                    if (source[i] == '\'')
                     {
-                        for (Lng32 i=0; i < valueEnd-valueBeg-2; i+=4)
-                        {
-                            source[i/2] = HandleHexValue(source[i], source[i+2]);
-                            source[i/2+1] = 0;
-                            if(i != 0)
-                            {
-                                source[i] = ' ';
-                                source[i+1] = 0;
-                            }
-                            source[i+2] = ' ';
-                            source[i+3] = 0;
-                        }
+                        valEnd = i-1;
+                        break;
                     }
-                    for (Lng32 i =valueEnd - valueBeg; i < valueEnd+2;  ++i)
-                    {
-                        if (i%2 == 0)
-                            source[i] = ' ';
-                        else {
-                            source[i] = 0;
-                        }
-                    }
+                }
+                Lng32 valBeg = perfix_end+1;
+                if (!source[valBeg])
+                {
+                    valBeg += 1;
+                }
+                memcpy(&source[perfix_beg], &source[valBeg], valEnd-valBeg+1);
+                memcpy(&source[valEnd-valBeg+1+perfix_beg], &source[valEnd+3], valBeg+2);
             }
-                valueEnd += 2;
+
         }
-       }
+
     }
+
+//    if (source)
+//    {
+//        Lng32 perfix_beg = 0;
+//        Lng32 perfix_end = 0;
+//        if(source[0] == '_' || source[0] =='N' || source[0] == 'n')
+//        {
+//            perfix_beg += 2;
+//            perfix_end = perfix_beg;
+
+//            // get charset perfix
+//            while (perfix_end <= endIndex)
+//            {
+//                if(source[perfix_end] == '\'')
+//                {
+//                    //charset perfix
+//                    Lng32 i;
+//                    for(i = 0; i < (perfix_end-perfix_beg)/2; ++i)
+//                            perfix[i] = TOUPPER(*(source+perfix_beg+i*2));
+//                    perfix[i] = 0;
+//                    break;
+//                }
+//                // not include charset name
+//                if (perfix_end == endIndex)
+//                    return TRUE;
+//                perfix_end += 2;
+//            }
+
+//            // charset name lookup
+//            CharInfo::CharSet cs = CharInfo::getCharSetEnum(perfix);
+//            if(source[0] != '_')
+//            {
+//                perfix_beg = 0;
+//                cs = CharInfo::UNICODE;
+//            }
+
+//            //TODO invalid charset check
+//            if (!CharInfo::isCharSetFullySupported(cs))
+//            {
+//                //*diagsArea << DgSqlCode(-3010) << DgString0(perfix);
+//                return FALSE;
+//            }
+//            if (cs == CharInfo::UnknownCharSet)
+//                return TRUE;
+//            NABoolean isHex = false;
+
+//            if(perfix_end > 4 && source[perfix_end-2] == 'X' && source[perfix_end-4] == ' ')
+//            {
+//               isHex = true;
+//            }
+
+//            Lng32 valueBeg = perfix_end + 2;
+//            Lng32 valueEnd = valueBeg;
+//            while(*(source+valueEnd))
+//            {
+//                if (source[valueEnd] == '\'')
+//                {
+//                    NAString* pTempStr = NULL;
+//                    pTempStr = unicodeToChar((wchar_t*)&source[valueBeg], (valueEnd-valueBeg)/2,
+//                                             static_cast<Lng32>(cs), heap);
+//                    if(pTempStr == NULL)
+//                    {
+////                        if (diagsArea)
+////                            *diagsArea << DgSqlCode(-8413);
+//                        return FALSE;
+//                    }
+
+
+//                    memcpy(source, &source[valueBeg], valueEnd-valueBeg);
+//                    if(isHex)
+//                    {
+//                        for (Lng32 i=0; i < valueEnd-valueBeg-2; i+=4)
+//                        {
+//                            source[i/2] = HandleHexValue(source[i], source[i+2]);
+//                            source[i/2+1] = 0;
+//                            if(i != 0)
+//                            {
+//                                source[i] = ' ';
+//                                source[i+1] = 0;
+//                            }
+//                            source[i+2] = ' ';
+//                            source[i+3] = 0;
+//                        }
+//                    }
+//                    for (Lng32 i =valueEnd - valueBeg; i < valueEnd+2;  ++i)
+//                    {
+//                        if (i%2 == 0)
+//                            source[i] = ' ';
+//                        else {
+//                            source[i] = 0;
+//                        }
+//                    }
+//            }
+//                valueEnd += 2;
+//        }
+//       }
+//    }
     return TRUE;
 }
 
