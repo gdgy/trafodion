@@ -971,6 +971,9 @@ enum OperatorTypeEnum {
                         DDL_INITIALIZE_SECURITY,
                         DDL_COMMENT_ON,
 
+                        // ddl operations on hive objects
+                        DDL_ON_HIVE_OBJECTS,
+
                         //
                         // Elements in DDL statements
                         //
